@@ -1,4 +1,4 @@
-"""Kernel implementation compatible with JAX."""
+"""Base class of Kernel implementation compatible with JAX."""
 import abc
 from functools import partial
 from sklearn.gaussian_process.kernels import Kernel as sklearn_kernel
@@ -52,38 +52,41 @@ class Kernel(sklearn_kernel, metaclass=abc.ABCMeta):
         return self.get_kernel_matrix_fn(eval_gradient)(params, X, Y)
 
     def diag(self, X):
+        """Get diagonal of kernel matrix."""
         params = self.get_params()
         return vmap(lambda x: self.pure_kernel_fn(params, x, x))(X)
 
-    def is_stationary(self):
-        return False
-
     def __add__(self, b):
+        """Add kernel to constant or other kernel."""
         if not isinstance(b, Kernel):
             return Sum(self, ConstantKernel(b))
         return Sum(self, b)
 
     def __radd__(self, b):
+        """Add kernel to constant or other kernel."""
         if not isinstance(b, Kernel):
             return Sum(ConstantKernel(b), self)
         return Sum(b, self)
 
     def __mul__(self, b):
+        """Mulitply kernel with constant or other kernel."""
         if not isinstance(b, Kernel):
             return Product(self, ConstantKernel(b))
         return Product(self, b)
 
     def __rmul__(self, b):
+        """Mulitply kernel with constant or other kernel."""
         if not isinstance(b, Kernel):
             return Product(ConstantKernel(b), self)
         return Product(b, self)
 
     def __pow__(self, b):
+        """Exponentiate kernel."""
         return Exponentiation(self, b)
 
 
 class KernelOperator(Kernel):
-    """Base class for operations on kernels."""
+    """Base class for operations on two kernels."""
 
     def __init__(self, k1: Kernel, k2: Kernel):
         """Compute an operation between two kernels k1, and k2."""
@@ -112,12 +115,17 @@ class KernelOperator(Kernel):
         return params
 
     @property
+    def is_stationary(self):
+        """Whether this is a stationary kernel."""
+        return self.k1.is_stationary and self.k2.is_stationary
+
+    @property
     def pure_kernel_fn(self):
         """Not implmented."""
         raise NotImplementedError
 
     @staticmethod
-    def split_kernel_parameters(params):
+    def _split_kernel_parameters(params):
         """Split kernel parameters for k1 and k2.
 
         Parameters:
@@ -148,7 +156,7 @@ class Sum(KernelOperator):
         k2_fn = self.k2.pure_kernel_fn
 
         def kernel_fn(params, x, y):
-            k1_params, k2_params = self.split_kernel_parameters(params)
+            k1_params, k2_params = self._split_kernel_parameters(params)
             return k1_fn(k1_params, x, y) + k2_fn(k2_params, x, y)
 
         return kernel_fn
@@ -164,7 +172,7 @@ class Product(KernelOperator):
         k2_fn = self.k2.pure_kernel_fn
 
         def kernel_fn(params, x, y):
-            k1_params, k2_params = self.split_kernel_parameters(params)
+            k1_params, k2_params = self._split_kernel_parameters(params)
             return k1_fn(k1_params, x, y) * k2_fn(k2_params, x, y)
 
         return kernel_fn
@@ -174,6 +182,7 @@ class ConstantKernel(Kernel):
     """Kernel which always returns a constant."""
 
     def __init__(self, constant_value):
+        """Init kernel with constant_value."""
         self.constant_value = constant_value
 
     @property
@@ -185,21 +194,30 @@ class ConstantKernel(Kernel):
 
 
 class Exponentiation(Kernel):
+    """Exponentiation of a kernel."""
+
     def __init__(self, kernel: Kernel, exponent):
+        """Init kernel exponentiation of kernel with exponent."""
         self.kernel = kernel
         self.exponent = exponent
 
+    @property
+    def is_stationary(self):
+        """Whether kernel is stationary."""
+        return self.kernel.is_stationary
+
     def get_params(self, deep=True):
         """Get parameters of this kernel.
-        Parameters
-        ----------
-        deep : boolean, optional
-            If True, will return the parameters for this estimator and
-            contained subobjects that are estimators.
-        Returns
-        -------
-        params : mapping of string to any
-            Parameter names mapped to their values.
+
+        Parameters:
+            deep : boolean, optional
+                If True, will return the parameters for this estimator and
+                contained subobjects that are estimators.
+
+        Returns:
+            params : mapping of string to any
+                Parameter names mapped to their values.
+
         """
         params = dict(kernel=self.kernel, exponent=self.exponent)
         if deep:
@@ -223,7 +241,8 @@ class Exponentiation(Kernel):
         def kernel_fn(params, x, y):
             exponent = params['exponent']
             kernel_params = get_kernel_params(params)
-            return np.pow(kernel.pure_kernel_fn(kernel_params, x, y), exponent)
+            return np.power(
+                kernel.pure_kernel_fn(kernel_params, x, y), exponent)
         return kernel_fn
 
 
@@ -231,11 +250,19 @@ class RBF(Kernel):
     """RBF Kernel."""
 
     def __init__(self, length_scale):
+        """Initialize RBF kernel with length_scale."""
         self.length_scale = length_scale
 
     @property
     def pure_kernel_fn(self):
+        """Pure kernel fn of RBF kernel."""
         def kernel_fn(params, x, y):
-            d = np.sum((x - y) ** 2, axis=-1)
-            return np.exp(-0.5 * d / params['length_scale'])
+            diff = (x - y) / params['length_scale']
+            d = np.sum(diff ** 2, axis=-1)
+            return np.exp(-0.5 * d)
         return kernel_fn
+
+    @property
+    def is_stationary(self):
+        """Whether the kernel is stationary."""
+        return True
