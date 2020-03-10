@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "ml-pipeline"
+version = "0.1.0"
+description = ""
+authors = ["Max Horn <max.horn@bsse.ethz.ch>"]
+
+[tool.poetry.dependencies]
+python = "^3.7"
+jax = "^0.1.59"
+jaxlib = "^0.1.40"
+sklearn = "^0.0"
+
+[tool.poetry.dev-dependencies]
+pytest = "^4.6"
+ipython = "^7.13.0"
+
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"
