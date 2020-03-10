@@ -33,16 +33,20 @@ class Kernel(sklearn_kernel, metaclass=abc.ABCMeta):
 
         Returned function has the signature: `f(theta, X, Y)`
         """
-        pure_kernel_fn = self.pure_kernel_fn
+        cache_name = '_kernel_matrix_fn' + '_grad' if eval_gradient else ''
+        if not hasattr(self, cache_name):
+            pure_kernel_fn = self.pure_kernel_fn
 
-        def kernel_matrix_fn(theta, X, Y):
-            kernel_fn = pure_kernel_fn
-            if eval_gradient:
-                kernel_fn = value_and_grad(pure_kernel_fn)
-            kernel_fn = jit(partial(kernel_fn, theta))
-            return vmap(lambda x: vmap(lambda y: kernel_fn(x, y))(Y))(X)
+            @jit
+            def kernel_matrix_fn(theta, X, Y):
+                kernel_fn = pure_kernel_fn
+                if eval_gradient:
+                    kernel_fn = value_and_grad(pure_kernel_fn)
+                kernel_fn = jit(partial(kernel_fn, theta))
+                return vmap(lambda x: vmap(lambda y: kernel_fn(x, y))(Y))(X)
+            setattr(self, cache_name, kernel_matrix_fn)
 
-        return kernel_matrix_fn
+        return getattr(self, cache_name)
 
     def __call__(self, X, Y=None, eval_gradient=False):
         """Build kernel matrix from input data X and Y.
@@ -227,8 +231,12 @@ class Product(KernelOperator):
 
         return kernel_fn
 
+    def __repr__(self):
+        """Return representation of kernel."""
+        return "{0} * {1}".format(self.k1, self.k2)
 
-class ConstantKernel(Kernel):
+
+class ConstantKernel(StationaryKernelMixin, Kernel):
     """Kernel which always returns a constant."""
 
     def __init__(self, constant_value=1.0, constant_value_bounds=(1e-5, 1e5)):
@@ -244,9 +252,15 @@ class ConstantKernel(Kernel):
     @property
     def pure_kernel_fn(self):
         """Return the kernel fn."""
-        @jit
-        def kernel_fn(theta, x, y):
-            return theta
+        if self.hyperparameter_constant_value.fixed:
+            value = self.constant_value
+
+            def kernel_fn(theta, x, y):
+                return value
+        else:
+            def kernel_fn(theta, x, y):
+                return np.exp(theta[0])  # Theta is in log domain and array
+
         return kernel_fn
 
 
@@ -373,12 +387,35 @@ class RBF(StationaryKernelMixin, NormalizedKernelMixin, Kernel):
     @property
     def pure_kernel_fn(self):
         """Pure kernel fn of RBF kernel."""
-        @jit
-        def kernel_fn(theta, x, y):
-            # As we get a log-transformed theta as input, we need to transform
-            # it back.
-            diff = (x - y) / np.exp(theta)
-            d = np.sum(diff ** 2, axis=-1)
-            return np.exp(-0.5 * d)
+        if self.hyperparameter_length_scale.fixed:
+            length_scale = self.length_scale
+            if np.iterable(length_scale):
+                # handle case when length scale is fixed and provided as list
+                length_scale = np.asarray(length_scale)
+
+            @jit
+            def kernel_fn(theta, x, y):
+                # as we get a log-transformed theta as input, we need to transform
+                # it back.
+                diff = (x - y) / length_scale
+                d = np.sum(diff ** 2, axis=-1)
+                return np.exp(-0.5 * d)
+        else:
+            @jit
+            def kernel_fn(theta, x, y):
+                # as we get a log-transformed theta as input, we need to transform
+                # it back.
+                diff = (x - y) / np.exp(theta)
+                d = np.sum(diff ** 2, axis=-1)
+                return np.exp(-0.5 * d)
         return kernel_fn
+
+    def __repr__(self):
+        if self.anisotropic:
+            return "{0}(length_scale=[{1}])".format(
+                self.__class__.__name__, ", ".join(map("{0:.3g}".format,
+                                                   self.length_scale)))
+        else:  # isotropic
+            return "{0}(length_scale={1:.3g})".format(
+                self.__class__.__name__, np.ravel(self.length_scale)[0])
 
