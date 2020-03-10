@@ -4,15 +4,12 @@ import numpy as np
 from inspect import signature
 
 from sklearn.gaussian_process.kernels import _approx_fprime
-
-from ml_pipeline.base.kernel import (
-    RBF, Kernel, KernelOperator, ConstantKernel, Exponentiation)
 from sklearn.base import clone
-
 from sklearn.utils._testing import (assert_almost_equal, assert_array_equal,
-                                    assert_array_almost_equal,
-                                    assert_allclose,
-                                    assert_raise_message)
+                                    assert_array_almost_equal)
+
+from sklearn_jax_kernels import (
+    RBF, Kernel, KernelOperator, ConstantKernel, Exponentiation)
 
 from jax.config import config
 config.update("jax_enable_x64", True)  # Required for numerical gradients checks

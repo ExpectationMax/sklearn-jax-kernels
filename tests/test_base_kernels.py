@@ -1,14 +1,9 @@
 """Test base kernels and compositions."""
 import numpy as np
-from sklearn.gaussian_process.kernels import _approx_fprime
 from sklearn.gaussian_process.kernels import RBF as sklearn_RBF
 from sklearn.gaussian_process.kernels import ConstantKernel as sklearn_C
 
-from ml_pipeline.base.kernel import RBF, ConstantKernel
-from sklearn.utils._testing import (assert_almost_equal, assert_array_equal,
-                                    assert_array_almost_equal,
-                                    assert_allclose,
-                                    assert_raise_message)
+from sklearn_jax_kernels import RBF, ConstantKernel
 
 
 class TestRBF:
@@ -29,16 +24,6 @@ class TestRBF:
         rbf = RBF(lengthscale)
         _, grad = rbf(X, eval_gradient=True)
         assert np.allclose(sk_grad, grad)
-
-        def eval_kernel_for_theta(theta):
-            kernel_clone = rbf.clone_with_theta(theta)
-            K = kernel_clone(X, eval_gradient=False)
-            print(theta, K)
-            return K
-
-        K_gradient_approx = \
-            _approx_fprime(rbf.theta, eval_kernel_for_theta, 1e-7)
-        assert_almost_equal(grad, K_gradient_approx, 4)
 
 
 class TestConstant:

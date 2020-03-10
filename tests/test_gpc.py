@@ -5,7 +5,7 @@ from scipy.optimize import approx_fprime
 import pytest
 
 from sklearn.gaussian_process import GaussianProcessClassifier
-from ml_pipeline.base.kernel import RBF, ConstantKernel as C
+from sklearn_jax_kernels import RBF, ConstantKernel as C
 
 from sklearn.utils._testing import assert_almost_equal, assert_array_equal
 

@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "ml-pipeline"
+name = "sklearn-jax-kernels"
 version = "0.1.0"
 description = ""
 authors = ["Max Horn <max.horn@bsse.ethz.ch>"]
@@ -8,7 +8,7 @@ authors = ["Max Horn <max.horn@bsse.ethz.ch>"]
 python = "^3.7"
 jax = "^0.1.59"
 jaxlib = "^0.1.40"
-sklearn = "^0.0"
+scikit-learn = "^0.22.2"
 
 [tool.poetry.dev-dependencies]
 pytest = "^4.6"
