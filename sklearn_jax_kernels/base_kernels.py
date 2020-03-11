@@ -32,13 +32,15 @@ class Kernel(sklearn_kernel, metaclass=abc.ABCMeta):
     def get_kernel_matrix_fn(self, eval_gradient):
         """Return pure function for computing kernel matrix and gradients.
 
+        We do some internal caching in order to avoid recompiling the resulting
+        function.
+
         Returned function has the signature: `f(theta, X, Y)`
         """
         cache_name = '_kernel_matrix_fn' + '_grad' if eval_gradient else ''
         if not hasattr(self, cache_name):
             pure_kernel_fn = self.pure_kernel_fn
 
-            # @jit
             if eval_gradient:
                 @jit
                 def kernel_matrix_fn(theta, X, Y):
@@ -258,7 +260,6 @@ class Sum(KernelOperator):
         k2_fn = self.k2.pure_kernel_fn
         k1_dims = self.k1.n_dims
 
-        @jit
         def kernel_fn(theta, x, y):
             return k1_fn(theta[:k1_dims], x, y) + k2_fn(theta[k1_dims:], x, y)
 
@@ -275,7 +276,6 @@ class Product(KernelOperator):
         k2_fn = self.k2.pure_kernel_fn
         k1_dims = self.k1.n_dims
 
-        @jit
         def kernel_fn(theta, x, y):
             return k1_fn(theta[:k1_dims], x, y) * k2_fn(theta[k1_dims:], x, y)
 
@@ -407,7 +407,6 @@ class Exponentiation(Kernel):
         exponent = self.exponent
         kernel_fn = self.kernel.pure_kernel_fn
 
-        @jit
         def exp_kernel_fn(theta, x, y):
             return np.power(kernel_fn(theta, x, y), exponent)
         return exp_kernel_fn
@@ -443,7 +442,6 @@ class RBF(StationaryKernelMixin, NormalizedKernelMixin, Kernel):
                 # handle case when length scale is fixed and provided as list
                 length_scale = np.asarray(length_scale)
 
-            @jit
             def kernel_fn(theta, x, y):
                 # as we get a log-transformed theta as input, we need to transform
                 # it back.
@@ -451,7 +449,6 @@ class RBF(StationaryKernelMixin, NormalizedKernelMixin, Kernel):
                 d = np.sum(diff ** 2, axis=-1)
                 return np.exp(-0.5 * d)
         else:
-            @jit
             def kernel_fn(theta, x, y):
                 # as we get a log-transformed theta as input, we need to transform
                 # it back.
