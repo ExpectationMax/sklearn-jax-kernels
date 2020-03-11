@@ -1,4 +1,4 @@
-"""Base class of Kernel implementation compatible with JAX."""
+"""Base classes of Kernel implementation compatible with JAX."""
 import abc
 from functools import partial
 from sklearn.gaussian_process.kernels import Kernel as sklearn_kernel
@@ -9,6 +9,7 @@ from sklearn.gaussian_process.kernels import (
 )
 from jax import jit, vmap, value_and_grad
 import jax.numpy as np
+import jax.ops as ops
 
 
 class Kernel(sklearn_kernel, metaclass=abc.ABCMeta):
@@ -37,13 +38,62 @@ class Kernel(sklearn_kernel, metaclass=abc.ABCMeta):
         if not hasattr(self, cache_name):
             pure_kernel_fn = self.pure_kernel_fn
 
-            @jit
-            def kernel_matrix_fn(theta, X, Y):
-                kernel_fn = pure_kernel_fn
-                if eval_gradient:
+            # @jit
+            if eval_gradient:
+                @jit
+                def kernel_matrix_fn(theta, X, Y):
                     kernel_fn = value_and_grad(pure_kernel_fn)
-                kernel_fn = jit(partial(kernel_fn, theta))
-                return vmap(lambda x: vmap(lambda y: kernel_fn(x, y))(Y))(X)
+                    kernel_fn = partial(kernel_fn, theta)
+                    if Y is None:
+                        n = len(X)
+                        values_scattered = np.empty((n, n))
+                        grads_scattered = np.empty((n, n, len(theta)))
+                        index1, index2 = np.tril_indices(n, k=-1)
+                        inst1, inst2 = X[index1], X[index2]
+                        values, grads = vmap(kernel_fn)(inst1, inst2)
+                        # Scatter computed values into matrix
+                        values_scattered = ops.index_update(
+                            values_scattered, (index1, index2), values)
+                        values_scattered = ops.index_update(
+                            values_scattered, (index2, index1), values)
+                        grads_scattered = ops.index_update(
+                            grads_scattered, (index1, index2), grads)
+                        grads_scattered = ops.index_update(
+                            grads_scattered, (index2, index1), grads)
+                        diag_values, diag_grads = vmap(
+                            lambda x: kernel_fn(x, x))(X)
+                        diag_indices = np.diag_indices(n)
+                        values_scattered = ops.index_update(
+                            values_scattered, diag_indices, diag_values)
+                        grads_scattered = ops.index_update(
+                            grads_scattered, diag_indices, diag_grads)
+                        return values_scattered, grads_scattered
+                    else:
+                        return vmap(
+                            lambda x: vmap(lambda y: kernel_fn(x, y))(Y))(X)
+            else:
+                @jit
+                def kernel_matrix_fn(theta, X, Y):
+                    kernel_fn = partial(pure_kernel_fn, theta)
+                    if Y is None:
+                        n = len(X)
+                        values_scattered = np.empty((n, n))
+                        index1, index2 = np.tril_indices(n, k=-1)
+                        inst1, inst2 = X[index1], X[index2]
+                        values = vmap(kernel_fn)(inst1, inst2)
+                        values_scattered = ops.index_update(
+                            values_scattered, (index1, index2), values)
+                        values_scattered = ops.index_update(
+                            values_scattered, (index2, index1), values)
+                        values_scattered = ops.index_update(
+                            values_scattered,
+                            np.diag_indices(n),
+                            vmap(lambda x: kernel_fn(x, x))(X)
+                        )
+                        return values_scattered
+                    else:
+                        return vmap(
+                            lambda x: vmap(lambda y: kernel_fn(x, y))(Y))(X)
             setattr(self, cache_name, kernel_matrix_fn)
 
         return getattr(self, cache_name)
@@ -53,9 +103,9 @@ class Kernel(sklearn_kernel, metaclass=abc.ABCMeta):
 
         Evtl. also compute the gradient with respect to the parameters.
         """
-        if Y is None:
-            Y = X
-
+        X = np.asarray(X)
+        if Y is not None:
+            Y = np.asarray(Y)
         return self.get_kernel_matrix_fn(eval_gradient)(self.theta, X, Y)
 
     def diag(self, X):
@@ -418,4 +468,3 @@ class RBF(StationaryKernelMixin, NormalizedKernelMixin, Kernel):
         else:  # isotropic
             return "{0}(length_scale={1:.3g})".format(
                 self.__class__.__name__, np.ravel(self.length_scale)[0])
-
