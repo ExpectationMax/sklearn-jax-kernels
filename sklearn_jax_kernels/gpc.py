@@ -38,6 +38,7 @@ def _newton_iteration(y_train, K, f):
         - np.log(np.diag(L)).sum()
     return lml, f, (pi, W_sr, L, b, a)
 
+
 class BinaryGaussianProcessClassifier(_BinaryGaussianProcessClassifierLaplace):
     def _posterior_mode(self, K, return_temporaries=False):
         """Mode-finding for binary Laplace GPC and fixed kernel.
@@ -53,7 +54,7 @@ class BinaryGaussianProcessClassifier(_BinaryGaussianProcessClassifierLaplace):
            and self.f_cached.shape == self.y_train_.shape:
             f = self.f_cached
         else:
-            f = np.zeros_like(self.y_train_, dtype=np.float64)
+            f = np.zeros_like(self.y_train_, dtype=np.float32)
 
         # Use Newton's iteration method to find mode of Laplace approximation
         log_marginal_likelihood = -np.inf
@@ -142,7 +143,11 @@ class BinaryGaussianProcessClassifier(_BinaryGaussianProcessClassifierLaplace):
 
             d_Z = ops.index_update(d_Z, j, s_1 + s_2.T.dot(s_3))  # Line 15
 
-        return numpy.asarray(Z), numpy.asarray(d_Z)
+        return (
+            numpy.asarray(Z, dtype=numpy.float64),
+            numpy.asarray(d_Z, dtype=numpy.float64)
+        )
+
 
 class GaussianProcessClassifier(GPC):
     def fit(self, X, y):
