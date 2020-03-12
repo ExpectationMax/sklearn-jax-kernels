@@ -5,7 +5,7 @@ description = ""
 authors = ["Max Horn <max.horn@bsse.ethz.ch>"]
 
 [tool.poetry.dependencies]
-python = "^3.7"
+python = "^3.6"
 jax = "^0.1.59"
 jaxlib = "^0.1.40"
 scikit-learn = "^0.22.2"
