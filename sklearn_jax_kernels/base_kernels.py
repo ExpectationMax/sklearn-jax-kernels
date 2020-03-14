@@ -29,6 +29,61 @@ class Kernel(sklearn_kernel, metaclass=abc.ABCMeta):
         fn(theta, x1, x2).
         """
 
+    @staticmethod
+    def _kernel_matrix_without_gradients(kernel_fn, theta, X, Y):
+        kernel_fn = partial(kernel_fn, theta)
+        if Y is None:
+            n = len(X)
+            values_scattered = np.empty((n, n))
+            index1, index2 = np.tril_indices(n, k=-1)
+            inst1, inst2 = X[index1], X[index2]
+            values = vmap(kernel_fn)(inst1, inst2)
+            values_scattered = ops.index_update(
+                values_scattered, (index1, index2), values)
+            values_scattered = ops.index_update(
+                values_scattered, (index2, index1), values)
+            values_scattered = ops.index_update(
+                values_scattered,
+                np.diag_indices(n),
+                vmap(lambda x: kernel_fn(x, x))(X)
+            )
+            return values_scattered
+        else:
+            return vmap(
+                lambda x: vmap(lambda y: kernel_fn(x, y))(Y))(X)
+
+    @staticmethod
+    def _kernel_matrix_with_gradients(kernel_fn, theta, X, Y):
+        kernel_fn = value_and_grad(kernel_fn)
+        kernel_fn = partial(kernel_fn, theta)
+        if Y is None:
+            n = len(X)
+            values_scattered = np.empty((n, n))
+            grads_scattered = np.empty((n, n, len(theta)))
+            index1, index2 = np.tril_indices(n, k=-1)
+            inst1, inst2 = X[index1], X[index2]
+            values, grads = vmap(kernel_fn)(inst1, inst2)
+            # Scatter computed values into matrix
+            values_scattered = ops.index_update(
+                values_scattered, (index1, index2), values)
+            values_scattered = ops.index_update(
+                values_scattered, (index2, index1), values)
+            grads_scattered = ops.index_update(
+                grads_scattered, (index1, index2), grads)
+            grads_scattered = ops.index_update(
+                grads_scattered, (index2, index1), grads)
+            diag_values, diag_grads = vmap(
+                lambda x: kernel_fn(x, x))(X)
+            diag_indices = np.diag_indices(n)
+            values_scattered = ops.index_update(
+                values_scattered, diag_indices, diag_values)
+            grads_scattered = ops.index_update(
+                grads_scattered, diag_indices, diag_grads)
+            return values_scattered, grads_scattered
+        else:
+            return vmap(
+                lambda x: vmap(lambda y: kernel_fn(x, y))(Y))(X)
+
     def get_kernel_matrix_fn(self, eval_gradient):
         """Return pure function for computing kernel matrix and gradients.
 
@@ -37,65 +92,21 @@ class Kernel(sklearn_kernel, metaclass=abc.ABCMeta):
 
         Returned function has the signature: `f(theta, X, Y)`
         """
-        cache_name = '_kernel_matrix_fn' + '_grad' if eval_gradient else ''
+        cache_name = (
+            '_cached_kernel_matrix_fn' + '_grad' if eval_gradient else '')
         if not hasattr(self, cache_name):
             pure_kernel_fn = self.pure_kernel_fn
 
             if eval_gradient:
-                @jit
-                def kernel_matrix_fn(theta, X, Y):
-                    kernel_fn = value_and_grad(pure_kernel_fn)
-                    kernel_fn = partial(kernel_fn, theta)
-                    if Y is None:
-                        n = len(X)
-                        values_scattered = np.empty((n, n))
-                        grads_scattered = np.empty((n, n, len(theta)))
-                        index1, index2 = np.tril_indices(n, k=-1)
-                        inst1, inst2 = X[index1], X[index2]
-                        values, grads = vmap(kernel_fn)(inst1, inst2)
-                        # Scatter computed values into matrix
-                        values_scattered = ops.index_update(
-                            values_scattered, (index1, index2), values)
-                        values_scattered = ops.index_update(
-                            values_scattered, (index2, index1), values)
-                        grads_scattered = ops.index_update(
-                            grads_scattered, (index1, index2), grads)
-                        grads_scattered = ops.index_update(
-                            grads_scattered, (index2, index1), grads)
-                        diag_values, diag_grads = vmap(
-                            lambda x: kernel_fn(x, x))(X)
-                        diag_indices = np.diag_indices(n)
-                        values_scattered = ops.index_update(
-                            values_scattered, diag_indices, diag_values)
-                        grads_scattered = ops.index_update(
-                            grads_scattered, diag_indices, diag_grads)
-                        return values_scattered, grads_scattered
-                    else:
-                        return vmap(
-                            lambda x: vmap(lambda y: kernel_fn(x, y))(Y))(X)
+                kernel_matrix_fn = jit(partial(
+                    self._kernel_matrix_with_gradients,
+                    pure_kernel_fn
+                ))
             else:
-                @jit
-                def kernel_matrix_fn(theta, X, Y):
-                    kernel_fn = partial(pure_kernel_fn, theta)
-                    if Y is None:
-                        n = len(X)
-                        values_scattered = np.empty((n, n))
-                        index1, index2 = np.tril_indices(n, k=-1)
-                        inst1, inst2 = X[index1], X[index2]
-                        values = vmap(kernel_fn)(inst1, inst2)
-                        values_scattered = ops.index_update(
-                            values_scattered, (index1, index2), values)
-                        values_scattered = ops.index_update(
-                            values_scattered, (index2, index1), values)
-                        values_scattered = ops.index_update(
-                            values_scattered,
-                            np.diag_indices(n),
-                            vmap(lambda x: kernel_fn(x, x))(X)
-                        )
-                        return values_scattered
-                    else:
-                        return vmap(
-                            lambda x: vmap(lambda y: kernel_fn(x, y))(Y))(X)
+                kernel_matrix_fn = jit(partial(
+                    self._kernel_matrix_without_gradients,
+                    pure_kernel_fn
+                ))
             setattr(self, cache_name, kernel_matrix_fn)
 
         return getattr(self, cache_name)
@@ -141,6 +152,172 @@ class Kernel(sklearn_kernel, metaclass=abc.ABCMeta):
     def __pow__(self, b):
         """Exponentiate kernel."""
         return Exponentiation(self, b)
+
+
+class NormalizedKernel(NormalizedKernelMixin, Kernel):
+    """Kernel wrapper which computes a normalized version of the kernel."""
+
+    def __init__(self, kernel):
+        self.kernel = kernel
+
+    @property
+    def pure_kernel_fn(self):
+        """Not really needed in this particular case."""
+        kernel_fn = self.kernel.pure_kernel_fn
+
+        def wrapped(theta, x, y):
+            K_xy = kernel_fn(theta, x, y)
+            K_xx = kernel_fn(theta, x, x)
+            K_yy = kernel_fn(theta, y, y)
+            return K_xy / np.sqrt(K_xx * K_yy)
+        return wrapped
+
+    def get_kernel_matrix_fn(self, eval_gradient):
+        """Return pure function for computing kernel matrix and gradients.
+
+        We do some internal caching in order to avoid recompiling the resulting
+        function. Further, we compute the output of the normalized kernel
+        matrix at this stage in order to avoid recomputing the self similarity
+        on each kernel evaluation.
+
+        Returned function has the signature: `f(theta, X, Y)`
+        """
+        cache_name = '_kernel_matrix_fn' + '_grad' if eval_gradient else ''
+        if not hasattr(self, cache_name):
+            pure_kernel_fn = self.kernel.pure_kernel_fn
+            if eval_gradient:
+                kernel_matrix_with_grad = \
+                    self._kernel_matrix_with_gradients
+
+                def wrapped(theta, X, Y):
+                    """Compute normalized kernel matrix and do chain rule."""
+                    kmatrix, grads = kernel_matrix_with_grad(
+                        pure_kernel_fn, theta, X, Y)
+                    if Y is None:
+                        diag = np.diag(kmatrix)
+                        normalizer = np.sqrt(diag[:, None] * diag[None, :])
+                        # Do the chain rule
+                        # TODO: Something still seems to be wrong here, see
+                        # tests
+                        grads = \
+                            (1/(normalizer ** 2) * kmatrix)[..., None] * grads
+                        return kmatrix / normalizer, grads
+                    else:
+                        # If y is not defined we need to compute the self
+                        # similarity of each instance
+                        K_xx = vmap(lambda x: pure_kernel_fn(theta, x, x))(X)
+                        K_yy = vmap(lambda y: pure_kernel_fn(theta, y, y))(Y)
+                        normalizer = np.sqrt(K_xx[:, None] * K_yy[None, :])
+                        # Do the chain rule
+                        # TODO: Something still seems to be wrong here, see
+                        # tests
+                        grads = \
+                            (1/(normalizer ** 2) * kmatrix)[..., None] * grads
+                        return kmatrix / normalizer, grads
+
+                kernel_matrix_fn = jit(wrapped)
+                kernel_matrix_fn = wrapped
+            else:
+                kernel_matrix = self._kernel_matrix_without_gradients
+
+                def wrapped(theta, X, Y):
+                    """Compute normalized kernel matrix."""
+                    kmatrix = kernel_matrix(pure_kernel_fn, theta, X, Y)
+                    if Y is None:
+                        diag = np.diag(kmatrix)
+                        normalizer = np.sqrt(diag[:, None] * diag[None, :])
+                        return kmatrix / normalizer
+                    else:
+                        # If y is not defined we need to compute the self
+                        # similarity of each instance
+                        K_xx = vmap(lambda x: pure_kernel_fn(theta, x, x))(X)
+                        K_yy = vmap(lambda y: pure_kernel_fn(theta, y, y))(Y)
+                        normalizer = np.sqrt(K_xx[:, None] * K_yy[None, :])
+                        return kmatrix / normalizer
+
+                kernel_matrix_fn = jit(wrapped)
+                kernel_matrix_fn = wrapped
+            setattr(self, cache_name, kernel_matrix_fn)
+        return getattr(self, cache_name)
+
+    def is_stationary(self):
+        """Whether kernel is stationary."""
+        return self.kernel.is_stationary()
+
+    def get_params(self, deep=True):
+        """Get parameters of this kernel.
+
+        Parameters:
+            deep : boolean, optional
+                If True, will return the parameters for this estimator and
+                contained subobjects that are estimators.
+
+        Returns:
+            params : mapping of string to any
+                Parameter names mapped to their values.
+
+        """
+        params = dict(kernel=self.kernel)
+        if deep:
+            deep_items = self.kernel.get_params().items()
+            params.update(('kernel__' + k, val) for k, val in deep_items)
+        return params
+
+    @property
+    def hyperparameters(self):
+        """Return a list of all hyperparameter."""
+        r = []
+        for hyperparameter in self.kernel.hyperparameters:
+            r.append(Hyperparameter("kernel__" + hyperparameter.name,
+                                    hyperparameter.value_type,
+                                    hyperparameter.bounds,
+                                    hyperparameter.n_elements))
+        return r
+
+    @property
+    def theta(self):
+        """Return the (flattened, log-transformed) non-fixed hyperparameters.
+
+        Note that theta are typically the log-transformed values of the
+        kernel's hyperparameters as this representation of the search space
+        is more amenable for hyperparameter search, as hyperparameters like
+        length-scales naturally live on a log-scale.
+
+        Returns:
+            theta : array, shape (n_dims,)
+                The non-fixed, log-transformed hyperparameters of the kernel
+
+        """
+        return self.kernel.theta
+
+    @theta.setter
+    def theta(self, theta):
+        """Set the (flattened, log-transformed) non-fixed hyperparameters.
+
+        Parameters:
+            theta : array, shape (n_dims,)
+                The non-fixed, log-transformed hyperparameters of the kernel
+
+        """
+        self.kernel.theta = theta
+
+    @property
+    def bounds(self):
+        """Return the log-transformed bounds on the theta.
+
+        Returns:
+            bounds : array, shape (n_dims, 2)
+                The log-transformed bounds on the kernel's hyperparameters
+                theta
+
+        """
+        return self.kernel.bounds
+
+    def __eq__(self, b):
+        """Whether two instances are considered equal."""
+        if type(self) != type(b):
+            return False
+        return self.kernel == b.kernel
 
 
 class KernelOperator(Kernel):

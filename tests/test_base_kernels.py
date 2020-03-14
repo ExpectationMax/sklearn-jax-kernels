@@ -1,9 +1,10 @@
 """Test base kernels and compositions."""
+from functools import partial
 import numpy as np
 from sklearn.gaussian_process.kernels import RBF as sklearn_RBF
 from sklearn.gaussian_process.kernels import ConstantKernel as sklearn_C
 
-from sklearn_jax_kernels import RBF, ConstantKernel
+from sklearn_jax_kernels import RBF, ConstantKernel, NormalizedKernel
 
 
 class TestRBF:
@@ -24,6 +25,35 @@ class TestRBF:
         rbf = RBF(lengthscale)
         _, grad = rbf(X, eval_gradient=True)
         assert np.allclose(sk_grad, grad)
+
+class TestNormalizedKernel:
+    def test_RBF_value_same(self):
+        X = np.random.normal(size=(10, 20))
+        kernel = NormalizedKernel(RBF(1.))
+        K = kernel(X)
+
+        # Compute the kernel using instance wise formulation
+        from jax import vmap
+        kernel_fn = partial(kernel.pure_kernel_fn, kernel.theta)
+        K_instance_wise = \
+            vmap(lambda x: vmap(lambda y: kernel_fn(x, y))(X))(X)
+
+        assert np.allclose(K, K_instance_wise)
+
+    def test_RBF_grad_same(self):
+        X = np.random.normal(size=(3, 20))
+        kernel = NormalizedKernel(RBF(1.))
+        K, K_grad = kernel(X, eval_gradient=True)
+
+        # Compute the kernel using instance wise formulation
+        from jax import vmap, grad
+        kernel_fn = partial(grad(kernel.pure_kernel_fn), kernel.theta)
+        K_grad_instance_wise = \
+            vmap(lambda x: vmap(lambda y: kernel_fn(x, y))(X))(X)
+        print(K_grad[..., 0])
+        print(K_grad_instance_wise[..., 0])
+
+        assert np.allclose(K_grad, K_grad_instance_wise)
 
 
 class TestConstant:
