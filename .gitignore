@@ -1,3 +1,4 @@
 __pycache__/
 sklearn_jax_kernels.egg-info/
 pip-wheel-metadata/
+poetry.lock

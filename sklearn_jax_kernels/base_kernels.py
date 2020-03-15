@@ -216,7 +216,6 @@ class NormalizedKernel(NormalizedKernelMixin, Kernel):
                         return kmatrix / normalizer, grads
 
                 kernel_matrix_fn = jit(wrapped)
-                kernel_matrix_fn = wrapped
             else:
                 kernel_matrix = self._kernel_matrix_without_gradients
 
@@ -236,7 +235,6 @@ class NormalizedKernel(NormalizedKernelMixin, Kernel):
                         return kmatrix / normalizer
 
                 kernel_matrix_fn = jit(wrapped)
-                kernel_matrix_fn = wrapped
             setattr(self, cache_name, kernel_matrix_fn)
         return getattr(self, cache_name)
 
