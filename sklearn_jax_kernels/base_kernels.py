@@ -12,6 +12,8 @@ import jax.numpy as np
 import jax.ops as ops
 from jax.experimental import loops
 
+SAVE_MEMORY = False
+
 
 class Kernel(sklearn_kernel, metaclass=abc.ABCMeta):
     """Kernel object similar to sklearn implementation but supporting JAX.
@@ -34,34 +36,36 @@ class Kernel(sklearn_kernel, metaclass=abc.ABCMeta):
     def _kernel_matrix_without_gradients(kernel_fn, theta, X, Y):
         kernel_fn = partial(kernel_fn, theta)
         if Y is None:
-            n = len(X)
-            with loops.Scope() as s:
-                s.scattered_values = np.empty((n, n))
-                index1, index2 = np.tril_indices(n, k=0)
-                for i in s.range(index1.shape[0]):
-                    i1, i2 = index1[i], index2[i]
-                    value = kernel_fn(X[i1], X[i2])
-                    s.scattered_values = ops.index_update(
-                        s.scattered_values,
-                        (np.stack([i1, i2]), np.stack([i2, i1])),
-                        value
-                    )
-            return s.scattered_values
-            # Here more vectorized version with higher memory overhead
-            # values_scattered = np.empty((n, n))
-            # index1, index2 = np.tril_indices(n, k=-1)
-            # inst1, inst2 = X[index1], X[index2]
-            # values = vmap(kernel_fn)(inst1, inst2)
-            # values_scattered = ops.index_update(
-            #     values_scattered, (index1, index2), values)
-            # values_scattered = ops.index_update(
-            #     values_scattered, (index2, index1), values)
-            # values_scattered = ops.index_update(
-            #     values_scattered,
-            #     np.diag_indices(n),
-            #     vmap(lambda x: kernel_fn(x, x))(X)
-            # )
-            # return values_scattered
+            if SAVE_MEMORY:
+                n = len(X)
+                with loops.Scope() as s:
+                    s.scattered_values = np.empty((n, n))
+                    index1, index2 = np.tril_indices(n, k=0)
+                    for i in s.range(index1.shape[0]):
+                        i1, i2 = index1[i], index2[i]
+                        value = kernel_fn(X[i1], X[i2])
+                        s.scattered_values = ops.index_update(
+                            s.scattered_values,
+                            (np.stack([i1, i2]), np.stack([i2, i1])),
+                            value
+                        )
+                return s.scattered_values
+            else:
+                n = len(X)
+                values_scattered = np.empty((n, n))
+                index1, index2 = np.tril_indices(n, k=-1)
+                inst1, inst2 = X[index1], X[index2]
+                values = vmap(kernel_fn)(inst1, inst2)
+                values_scattered = ops.index_update(
+                    values_scattered, (index1, index2), values)
+                values_scattered = ops.index_update(
+                    values_scattered, (index2, index1), values)
+                values_scattered = ops.index_update(
+                    values_scattered,
+                    np.diag_indices(n),
+                    vmap(lambda x: kernel_fn(x, x))(X)
+                )
+                return values_scattered
         else:
             return vmap(
                 lambda x: vmap(lambda y: kernel_fn(x, y))(Y))(X)
@@ -71,45 +75,47 @@ class Kernel(sklearn_kernel, metaclass=abc.ABCMeta):
         kernel_fn = value_and_grad(kernel_fn)
         kernel_fn = partial(kernel_fn, theta)
         if Y is None:
-            n = len(X)
-            with loops.Scope() as s:
-                s.scattered_values = np.empty((n, n))
-                s.scattered_grads = np.empty((n, n, len(theta)))
-                index1, index2 = np.tril_indices(n, k=0)
-                for i in s.range(index1.shape[0]):
-                    i1, i2 = index1[i], index2[i]
-                    value, grads = kernel_fn(X[i1], X[i2])
-                    indexes = (np.stack([i1, i2]), np.stack([i2, i1]))
-                    s.scattered_values = ops.index_update(
-                        s.scattered_values,
-                        indexes,
-                        value
-                    )
-                    s.scattered_grads = ops.index_update(
-                        s.scattered_grads, indexes, grads)
-            return s.scattered_values, s.scattered_grads
-            # values_scattered = np.empty((n, n))
-            # grads_scattered = np.empty((n, n, len(theta)))
-            # index1, index2 = np.tril_indices(n, k=-1)
-            # inst1, inst2 = X[index1], X[index2]
-            # values, grads = vmap(kernel_fn)(inst1, inst2)
-            # # Scatter computed values into matrix
-            # values_scattered = ops.index_update(
-            #     values_scattered, (index1, index2), values)
-            # values_scattered = ops.index_update(
-            #     values_scattered, (index2, index1), values)
-            # grads_scattered = ops.index_update(
-            #     grads_scattered, (index1, index2), grads)
-            # grads_scattered = ops.index_update(
-            #     grads_scattered, (index2, index1), grads)
-            # diag_values, diag_grads = vmap(
-            #     lambda x: kernel_fn(x, x))(X)
-            # diag_indices = np.diag_indices(n)
-            # values_scattered = ops.index_update(
-            #     values_scattered, diag_indices, diag_values)
-            # grads_scattered = ops.index_update(
-            #     grads_scattered, diag_indices, diag_grads)
-            # return values_scattered, grads_scattered
+            if SAVE_MEMORY:
+                n = len(X)
+                with loops.Scope() as s:
+                    s.scattered_values = np.empty((n, n))
+                    s.scattered_grads = np.empty((n, n, len(theta)))
+                    index1, index2 = np.tril_indices(n, k=0)
+                    for i in s.range(index1.shape[0]):
+                        i1, i2 = index1[i], index2[i]
+                        value, grads = kernel_fn(X[i1], X[i2])
+                        indexes = (np.stack([i1, i2]), np.stack([i2, i1]))
+                        s.scattered_values = ops.index_update(
+                            s.scattered_values,
+                            indexes,
+                            value
+                        )
+                        s.scattered_grads = ops.index_update(
+                            s.scattered_grads, indexes, grads)
+                return s.scattered_values, s.scattered_grads
+            else:
+                values_scattered = np.empty((n, n))
+                grads_scattered = np.empty((n, n, len(theta)))
+                index1, index2 = np.tril_indices(n, k=-1)
+                inst1, inst2 = X[index1], X[index2]
+                values, grads = vmap(kernel_fn)(inst1, inst2)
+                # Scatter computed values into matrix
+                values_scattered = ops.index_update(
+                    values_scattered, (index1, index2), values)
+                values_scattered = ops.index_update(
+                    values_scattered, (index2, index1), values)
+                grads_scattered = ops.index_update(
+                    grads_scattered, (index1, index2), grads)
+                grads_scattered = ops.index_update(
+                    grads_scattered, (index2, index1), grads)
+                diag_values, diag_grads = vmap(
+                    lambda x: kernel_fn(x, x))(X)
+                diag_indices = np.diag_indices(n)
+                values_scattered = ops.index_update(
+                    values_scattered, diag_indices, diag_values)
+                grads_scattered = ops.index_update(
+                    grads_scattered, diag_indices, diag_grads)
+                return values_scattered, grads_scattered
         else:
             return vmap(
                 lambda x: vmap(lambda y: kernel_fn(x, y))(Y))(X)
