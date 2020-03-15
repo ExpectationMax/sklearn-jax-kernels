@@ -184,7 +184,7 @@ class DistanceSpectrumKernel(Kernel):
     def hyperparameters(self):
         """Return a list of all hyperparameter."""
         r = []
-        for hyperparameter in self.kernel.hyperparameters:
+        for hyperparameter in self.distance_kernel.hyperparameters:
             r.append(Hyperparameter("distance_kernel__" + hyperparameter.name,
                                     hyperparameter.value_type,
                                     hyperparameter.bounds,
@@ -248,7 +248,7 @@ class DistanceSpectrumKernel(Kernel):
             n_gram_length=self.n_gram_length
         )
         if deep:
-            deep_items = self.kernel.get_params().items()
+            deep_items = self.distance_kernel.get_params().items()
             params.update(
                 ('distance_kernel__' + k, val) for k, val in deep_items)
         return params
