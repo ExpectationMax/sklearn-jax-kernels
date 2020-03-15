@@ -94,6 +94,7 @@ class Kernel(sklearn_kernel, metaclass=abc.ABCMeta):
                             s.scattered_grads, indexes, grads)
                 return s.scattered_values, s.scattered_grads
             else:
+                n = len(X)
                 values_scattered = np.empty((n, n))
                 grads_scattered = np.empty((n, n, len(theta)))
                 index1, index2 = np.tril_indices(n, k=-1)
