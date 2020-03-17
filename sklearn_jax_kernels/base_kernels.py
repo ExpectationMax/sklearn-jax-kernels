@@ -1,5 +1,6 @@
 """Base classes of Kernel implementation compatible with JAX."""
 import abc
+import numpy
 from functools import partial
 from sklearn.gaussian_process.kernels import Kernel as sklearn_kernel
 from sklearn.gaussian_process.kernels import (
@@ -12,7 +13,7 @@ import jax.numpy as np
 import jax.ops as ops
 from jax.experimental import loops
 
-SAVE_MEMORY = False
+SAVE_MEMORY = True
 
 
 class Kernel(sklearn_kernel, metaclass=abc.ABCMeta):
@@ -39,17 +40,21 @@ class Kernel(sklearn_kernel, metaclass=abc.ABCMeta):
             if SAVE_MEMORY:
                 n = len(X)
                 with loops.Scope() as s:
-                    s.scattered_values = np.empty((n, n))
-                    index1, index2 = np.tril_indices(n, k=0)
-                    for i in s.range(index1.shape[0]):
-                        i1, i2 = index1[i], index2[i]
-                        value = kernel_fn(X[i1], X[i2])
-                        s.scattered_values = ops.index_update(
-                            s.scattered_values,
-                            (np.stack([i1, i2]), np.stack([i2, i1])),
-                            value
+                    # s.scattered_values = np.empty((n, n))
+                    s.index1, s.index2 = np.tril_indices(n, k=0)
+                    s.output = np.empty(len(s.index1))
+                    for i in s.range(s.index1.shape[0]):
+                        i1, i2 = s.index1[i], s.index2[i]
+                        s.output = ops.index_update(
+                            s.output,
+                            i,
+                            kernel_fn(X[i1], X[i2])
                         )
-                return s.scattered_values
+                first_update = ops.index_update(
+                    np.empty((n, n)), (s.index1, s.index2), s.output)
+                second_update = ops.index_update(
+                    first_update, (s.index2, s.index1), s.output)
+                return second_update
             else:
                 n = len(X)
                 values_scattered = np.empty((n, n))
@@ -67,8 +72,19 @@ class Kernel(sklearn_kernel, metaclass=abc.ABCMeta):
                 )
                 return values_scattered
         else:
-            return vmap(
-                lambda x: vmap(lambda y: kernel_fn(x, y))(Y))(X)
+            if SAVE_MEMORY:
+                with loops.Scope() as s:
+                    s.output = np.empty((X.shape[0], Y.shape[0]))
+                    for i in s.range(X.shape[0]):
+                        x = X[i]
+                        s.output = ops.index_update(
+                            s.output,
+                            i,
+                            vmap(lambda y: kernel_fn(x, y))(Y)
+                        )
+                return s.output
+            else:
+                return vmap(lambda x: vmap(lambda y: kernel_fn(x, y))(Y))(X)
 
     @staticmethod
     def _kernel_matrix_with_gradients(kernel_fn, theta, X, Y):
@@ -194,8 +210,9 @@ class Kernel(sklearn_kernel, metaclass=abc.ABCMeta):
 class NormalizedKernel(NormalizedKernelMixin, Kernel):
     """Kernel wrapper which computes a normalized version of the kernel."""
 
-    def __init__(self, kernel):
+    def __init__(self, kernel, save_memory=False):
         self.kernel = kernel
+        self.save_memory = save_memory
 
     @property
     def pure_kernel_fn(self):
@@ -219,6 +236,11 @@ class NormalizedKernel(NormalizedKernelMixin, Kernel):
 
         Returned function has the signature: `f(theta, X, Y)`
         """
+        if self.save_memory:
+            # Possibly we can save some memory by computing the normalization
+            # inside the loop.
+            return super().get_kernel_matrix_fn(eval_gradient)
+
         cache_name = '_kernel_matrix_fn' + '_grad' if eval_gradient else ''
         if not hasattr(self, cache_name):
             pure_kernel_fn = self.kernel.pure_kernel_fn
