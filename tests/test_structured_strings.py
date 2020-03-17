@@ -15,6 +15,17 @@ class TestUtils:
         inverse = transformer.inverse_transform(trans)
         assert all([s1 == s2 for s1, s2 in zip(strings, inverse)])
 
+    def test_ngram_transformer(self):
+        strings = np.asarray([list('abcde')])
+        ngrams = np.asarray([[
+            list('abc'),
+            list('bcd'),
+            list('cde')
+        ]])
+        transformer = NGramTransformer(3)
+        transformed = transformer.transform(strings)
+        assert np.all(np.ravel(ngrams) == np.ravel(transformed))
+
 
 class TestKernels:
     def test_spectrum_kernel_example(self):

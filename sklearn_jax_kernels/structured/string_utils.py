@@ -37,4 +37,4 @@ class NGramTransformer(TransformerMixin, BaseEstimator):
             X[:, i:n+1-self.ngram_length+i]
             for i in range(0, self.ngram_length)
         ]
-        return np.stack(ngram_slices, axis=1)
+        return np.stack(ngram_slices, axis=2)
