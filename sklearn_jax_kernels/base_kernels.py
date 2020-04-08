@@ -13,7 +13,7 @@ import jax.numpy as np
 import jax.ops as ops
 from jax.experimental import loops
 
-SAVE_MEMORY = True
+from .config import config_value
 
 
 class Kernel(sklearn_kernel, metaclass=abc.ABCMeta):
@@ -36,8 +36,8 @@ class Kernel(sklearn_kernel, metaclass=abc.ABCMeta):
     @staticmethod
     def _kernel_matrix_without_gradients(kernel_fn, theta, X, Y):
         kernel_fn = partial(kernel_fn, theta)
-        if Y is None:
-            if SAVE_MEMORY:
+        if Y is None or (Y is X):
+            if config_value('KERNEL_MATRIX_USE_LOOP'):
                 n = len(X)
                 with loops.Scope() as s:
                     # s.scattered_values = np.empty((n, n))
@@ -91,7 +91,7 @@ class Kernel(sklearn_kernel, metaclass=abc.ABCMeta):
         kernel_fn = value_and_grad(kernel_fn)
         kernel_fn = partial(kernel_fn, theta)
         if Y is None:
-            if SAVE_MEMORY:
+            if config_value('KERNEL_MATRIX_USE_LOOP'):
                 n = len(X)
                 with loops.Scope() as s:
                     s.scattered_values = np.empty((n, n))
@@ -210,9 +210,8 @@ class Kernel(sklearn_kernel, metaclass=abc.ABCMeta):
 class NormalizedKernel(NormalizedKernelMixin, Kernel):
     """Kernel wrapper which computes a normalized version of the kernel."""
 
-    def __init__(self, kernel, save_memory=False):
+    def __init__(self, kernel):
         self.kernel = kernel
-        self.save_memory = save_memory
 
     @property
     def pure_kernel_fn(self):
@@ -236,9 +235,13 @@ class NormalizedKernel(NormalizedKernelMixin, Kernel):
 
         Returned function has the signature: `f(theta, X, Y)`
         """
-        if self.save_memory:
-            # Possibly we can save some memory by computing the normalization
-            # inside the loop.
+        if config_value('NORMALIZED_KERNEL_PUSH_DOWN'):
+            # In this case compute the normalization for each instance
+            # inside the kernel fn. This recomputes the self similarities many
+            # times, but does not require keeping multiple tensors of the size
+            # of the kernel matrix in memory for computing normalization. This
+            # is particularly the case when computing gradients with respect to
+            # kernel parameters.
             return super().get_kernel_matrix_fn(eval_gradient)
 
         cache_name = '_kernel_matrix_fn' + '_grad' if eval_gradient else ''
@@ -296,7 +299,8 @@ class NormalizedKernel(NormalizedKernelMixin, Kernel):
                             (
                                 2 * K_xx * K_yy * grads -
                                 kmatrix * (K_xx_grad * K_yy + K_xx * K_yy_grad)
-                            ) / (2 * (K_xx * K_yy) ** (3/2))
+                            ) /
+                            (2 * (K_xx * K_yy) ** (3/2))
                         )
 
                         return kmatrix / normalizer, grads

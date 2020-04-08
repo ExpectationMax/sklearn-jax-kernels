@@ -1,14 +1,19 @@
 """Test base kernels and compositions."""
+import pytest
 from functools import partial
 import numpy as np
 from sklearn.gaussian_process.kernels import RBF as sklearn_RBF
 from sklearn.gaussian_process.kernels import ConstantKernel as sklearn_C
 
 from sklearn_jax_kernels import RBF, ConstantKernel, NormalizedKernel
+from sklearn_jax_kernels import config
 
 
 class TestRBF:
-    def test_value(self):
+    @pytest.mark.parametrize("save_memory", [True, False])
+    def test_value(self, save_memory):
+        config.SAVE_MEMORY = save_memory
+
         lengthscale = 15.
         X = np.random.normal(size=(10, 20))
 
@@ -16,7 +21,10 @@ class TestRBF:
         rbf = RBF(lengthscale)
         assert np.allclose(sk_rbf(X), rbf(X))
 
-    def test_gradient(self):
+    @pytest.mark.parametrize("save_memory", [True, False])
+    def test_gradient(self, save_memory):
+        config.SAVE_MEMORY = save_memory
+
         lengthscale = 1.
         X = np.random.normal(size=(5, 2))
 
@@ -50,8 +58,6 @@ class TestNormalizedKernel:
         kernel_fn = partial(grad(kernel.pure_kernel_fn), kernel.theta)
         K_grad_instance_wise = \
             vmap(lambda x: vmap(lambda y: kernel_fn(x, y))(X))(X)
-        print(K_grad[..., 0])
-        print(K_grad_instance_wise[..., 0])
 
         assert np.allclose(K_grad, K_grad_instance_wise)
 
@@ -65,8 +71,6 @@ class TestNormalizedKernel:
         kernel_fn = partial(grad(kernel.pure_kernel_fn), kernel.theta)
         K_grad_instance_wise = \
             vmap(lambda x: vmap(lambda y: kernel_fn(x, y))(X))(X)
-        print(K_grad[..., 0])
-        print(K_grad_instance_wise[..., 0])
 
         assert np.allclose(K_grad, K_grad_instance_wise)
 
@@ -88,9 +92,7 @@ class TestConstant:
         _, sk_grad = sk_c(X, eval_gradient=True)
         _, grad = c(X, eval_gradient=True)
 
-        print(sk_grad[0, :, 0], grad[0, :, 0])
         assert np.allclose(sk_grad, grad)
-
 
 
 class TestCompositions:
