@@ -140,40 +140,33 @@ class DistanceSpectrumKernel(Kernel):
 
         distance_kernel = self.distance_kernel.pure_kernel_fn
 
+        def kmer_kernel_fn(theta, kmers1, kmers2):
+            pos_kernel = partial(distance_kernel, theta)
+            kmer2_offsets = np.arange(kmers1.shape[0], dtype=np.uint32)
+            with loops.Scope() as s:
+                s.out = 0.
+                for i in s.range(kmers1.shape[0]):
+                    kmer = kmers1[i]
+                    distances = vmap(
+                        lambda j: pos_kernel(i, j))(kmer2_offsets)
+                    is_same = np.all(kmer[None, :] == kmers2, axis=1)
+                    n_matches = np.sum(is_same * distances)
+                    s.out += n_matches
+            return s.out
         if n_gram_length is None:
             # Assume input is kmer transformed
-            def kernel_fn(theta, kmers1, kmers2):
-                pos_kernel = partial(distance_kernel, theta)
-                kmer2_offsets = np.arange(kmers1.shape[0], dtype=np.uint32)
-                with loops.Scope() as s:
-                    s.out = 0.
-                    for i in s.range(kmers1.shape[0]):
-                        kmer = kmers1[i]
-                        distances = vmap(
-                            lambda j: pos_kernel(i, j))(kmer2_offsets)
-                        is_same = np.all(kmer[None, :] == kmers2, axis=1)
-                        n_matches = np.sum(is_same * distances)
-                        s.out += n_matches
-                return s.out
+            kernel_fn = kmer_kernel_fn
         else:
             def kernel_fn(theta, string1, string2):
-                pos_kernel = partial(distance_kernel, theta)
-                with loops.Scope() as s1:
-                    s1.out = 0.
-                    for i in s1.range(len(string1) - n_gram_length + 1):
-                        with loops.Scope() as s2:
-                            s2.out = 0.
-                            for j in s2.range(len(string2) - n_gram_length + 1):
-                                substring1 = dynamic_slice_in_dim(
-                                    string1, i, n_gram_length)
-                                substring2 = dynamic_slice_in_dim(
-                                    string2, j, n_gram_length)
-                                s2.out += (
-                                    np.all(substring1 == substring2) *
-                                    pos_kernel(i, j)
-                                )
-                        s1.out += s2.out
-                return s1.out
+                def make_to_kmers(string):
+                    ngram_slices = [
+                        string[i:len(string)+1-n_gram_length+i]
+                        for i in range(0, n_gram_length)
+                    ]
+                    return np.stack(ngram_slices, axis=1)
+                kmers1 = make_to_kmers(string1)
+                kmers2 = make_to_kmers(string2)
+                return kmer_kernel_fn(theta, kmers1, kmers2)
 
         return kernel_fn
 
