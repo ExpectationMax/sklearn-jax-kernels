@@ -72,7 +72,7 @@ class Kernel(sklearn_kernel, metaclass=abc.ABCMeta):
                 )
                 return values_scattered
         else:
-            if SAVE_MEMORY:
+            if config_value('KERNEL_MATRIX_USE_LOOP'):
                 with loops.Scope() as s:
                     s.output = np.empty((X.shape[0], Y.shape[0]))
                     for i in s.range(X.shape[0]):
