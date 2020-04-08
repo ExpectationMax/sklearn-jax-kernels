@@ -254,24 +254,51 @@ class NormalizedKernel(NormalizedKernelMixin, Kernel):
                         pure_kernel_fn, theta, X, Y)
                     if Y is None:
                         diag = np.diag(kmatrix)
+                        grad_diag_indices = np.diag_indices(kmatrix.shape[0])
+                        diag_grad = grads[grad_diag_indices]
                         normalizer = np.sqrt(diag[:, None] * diag[None, :])
+                        # Add dimensions for broadcasting
+                        K_xx = diag[:, None, None]
+                        K_yy = diag[None, :, None]
+                        K_xx_grad = diag_grad[:, None, :]
+                        K_yy_grad = diag_grad[None, :, :]
+
                         # Do the chain rule
-                        # TODO: Something still seems to be wrong here, see
-                        # tests
-                        grads = \
-                            (1/(normalizer ** 2) * kmatrix)[..., None] * grads
+                        grads = (
+                            (
+                                2 * K_xx * K_yy * grads -
+                                kmatrix * (K_xx_grad * K_yy + K_xx * K_yy_grad)
+                            ) / (2 * (K_xx * K_yy) ** (3/2))
+                        )
                         return kmatrix / normalizer, grads
                     else:
                         # If y is not defined we need to compute the self
                         # similarity of each instance
-                        K_xx = vmap(lambda x: pure_kernel_fn(theta, x, x))(X)
-                        K_yy = vmap(lambda y: pure_kernel_fn(theta, y, y))(Y)
+                        kernel_fn_with_grad = partial(
+                            value_and_grad(pure_kernel_fn), theta)
+                        K_xx, K_xx_grad = vmap(
+                            lambda x: kernel_fn_with_grad(x, x))(X)
+                        K_yy, K_yy_grad = vmap(
+                            lambda y: kernel_fn_with_grad(y, y))(Y)
+                        # Add dimensions for broadcasting
+                        K_xx = K_xx[:, None, None]
+                        K_yy = K_yy[None, :, None]
+                        K_xx_grad = K_xx_grad[:, None, :]
+                        K_yy_grad = K_yy_grad[None, :, :]
+
                         normalizer = np.sqrt(K_xx[:, None] * K_yy[None, :])
-                        # Do the chain rule
-                        # TODO: Something still seems to be wrong here, see
-                        # tests
-                        grads = \
-                            (1/(normalizer ** 2) * kmatrix)[..., None] * grads
+                        # d/dw(k(x, y, w)/sqrt(k(x, x, w) k(y, y, w))) = (2
+                        # k(x, x, w) k(y, y, w) k^(0, 0, 1)(x, y, w) - k(x, y,
+                        # w) (k^(0, 0, 1)(x, x, w) k(y, y, w) + k(x, x, w)
+                        # k^(0, 0, 1)(y, y, w)))/(2 (k(x, x, w) k(y, y,
+                        # w))^(3/2))
+                        grads = (
+                            (
+                                2 * K_xx * K_yy * grads -
+                                kmatrix * (K_xx_grad * K_yy + K_xx * K_yy_grad)
+                            ) / (2 * (K_xx * K_yy) ** (3/2))
+                        )
+
                         return kmatrix / normalizer, grads
 
                 kernel_matrix_fn = jit(wrapped)
