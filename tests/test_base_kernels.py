@@ -34,6 +34,7 @@ class TestRBF:
         _, grad = rbf(X, eval_gradient=True)
         assert np.allclose(sk_grad, grad)
 
+
 class TestNormalizedKernel:
     def test_RBF_value_same(self):
         X = np.random.normal(size=(10, 20))
