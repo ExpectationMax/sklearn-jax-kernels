@@ -9,6 +9,8 @@ from sklearn_jax_kernels.structured.strings import (
     RevComplementSpectrumKernel,
     SpectrumKernel
 )
+# from jax import config
+# config.update('jax_disable_jit', True)
 
 
 class TestUtils:

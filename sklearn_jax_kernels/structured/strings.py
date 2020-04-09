@@ -46,14 +46,8 @@ class SpectrumKernel(GenericKernelMixin, Kernel):
         n_gram_length = self.n_gram_length
 
         def kmer_kernel_fn(theta, kmers1, kmers2):
-            with loops.Scope() as s:
-                s.out = 0.
-                for i in s.range(kmers1.shape[0]):
-                    kmer = kmers1[i]
-                    is_same = np.all(kmer[None, :] == kmers2, axis=1)
-                    n_matches = np.sum(is_same)
-                    s.out += n_matches
-            return s.out
+            same_kmer = np.all(kmers1[None, :, :] == kmers2[:, None, :], axis=2)
+            return np.sum(same_kmer)
 
         if n_gram_length is None:
             # Assume input is kmer transformed
@@ -142,17 +136,17 @@ class DistanceSpectrumKernel(Kernel):
 
         def kmer_kernel_fn(theta, kmers1, kmers2):
             pos_kernel = partial(distance_kernel, theta)
-            kmer2_offsets = np.arange(kmers1.shape[0], dtype=np.uint32)
-            with loops.Scope() as s:
-                s.out = 0.
-                for i in s.range(kmers1.shape[0]):
-                    kmer = kmers1[i]
-                    distances = vmap(
-                        lambda j: pos_kernel(i, j))(kmer2_offsets)
-                    is_same = np.all(kmer[None, :] == kmers2, axis=1)
-                    n_matches = np.sum(is_same * distances)
-                    s.out += n_matches
-            return s.out
+            same_kmer = np.all(
+                kmers1[:, None, :] == kmers2[None, :, :],
+                axis=2
+            )
+            offsets1 = np.arange(kmers1.shape[0])
+            offsets2 = np.arange(kmers2.shape[0])
+            distance_weight = vmap(
+                lambda i: vmap(lambda j: pos_kernel(i, j))(offsets2))(offsets1)
+            print(distance_weight.dtype)
+            return np.sum(same_kmer * distance_weight)
+
         if n_gram_length is None:
             # Assume input is kmer transformed
             kernel_fn = kmer_kernel_fn
@@ -283,7 +277,6 @@ class DistanceFromEndSpectrumKernel(Kernel):
             kmer2_offsets = np.arange(kmers1.shape[0], dtype=np.uint32)
             distances_from_end = np.min(
                 np.stack([kmer2_offsets, kmer2_offsets[::-1]], axis=0), axis=0)
-            print(distances_from_end)
 
             with loops.Scope() as s:
                 s.out = 0.
@@ -423,7 +416,7 @@ class RevComplementSpectrumKernel(GenericKernelMixin, Kernel):
     def pure_kernel_fn(self):
         """Return the pure fuction for computing the kernel."""
         n_gram_length = self.n_gram_length
-        mapping = device_put(self.mapping)
+        mapping = device_put(np.array(self.mapping))
 
         def kmer_kernel_fn(theta, kmers1, kmers2):
             with loops.Scope() as s:
