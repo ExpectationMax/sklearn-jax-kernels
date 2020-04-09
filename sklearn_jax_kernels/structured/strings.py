@@ -398,3 +398,105 @@ class DistanceFromEndSpectrumKernel(Kernel):
     def is_stationary(self):
         """Whether this kernel is stationary."""
         return False
+
+
+class RevComplementSpectrumKernel(GenericKernelMixin, Kernel):
+    """Spectrum string kernel which also count reverse complement matches."""
+
+    def __init__(self, n_gram_length, mapping):
+        """Spectrum kernel on strings.
+
+        Assumes input was transformed via `AcsiiBytesTransformer` or similar
+        tranformation into a jax compatible datatype.
+
+        Parameters:
+            n_gram_length: Length of ngrams to compare. If `None` it is assumed
+                that the input is 2d where the final axis is the n_grams.
+            mapping: Array of length of alphabet which defines what is
+                considered the complement to a particular character
+
+        """
+        self.n_gram_length = n_gram_length
+        self.mapping = mapping
+
+    @property
+    def pure_kernel_fn(self):
+        """Return the pure fuction for computing the kernel."""
+        n_gram_length = self.n_gram_length
+        mapping = device_put(self.mapping)
+
+        def kmer_kernel_fn(theta, kmers1, kmers2):
+            with loops.Scope() as s:
+                s.out = 0.
+                for i in s.range(kmers1.shape[0]):
+                    kmer = kmers1[i]
+                    rev_comp = mapping[kmer][::-1]
+                    is_same_fw = np.all(kmer[None, :] == kmers2, axis=1)
+                    is_same_rev_comp = np.all(
+                        rev_comp[None, :] == kmers2, axis=1)
+                    n_matches = np.sum(is_same_fw) + np.sum(is_same_rev_comp)
+                    s.out += n_matches
+            return s.out
+
+        if n_gram_length is None:
+            # Assume input is kmer transformed
+            kernel_fn = kmer_kernel_fn
+        else:
+            def kernel_fn(theta, string1, string2):
+                def make_to_kmers(string):
+                    ngram_slices = [
+                        string[i:len(string)+1-n_gram_length+i]
+                        for i in range(0, n_gram_length)
+                    ]
+                    return np.stack(ngram_slices, axis=1)
+                kmers1 = make_to_kmers(string1)
+                kmers2 = make_to_kmers(string2)
+                return kmer_kernel_fn(theta, kmers1, kmers2)
+        return kernel_fn
+
+    @property
+    def hyperparameters(self):
+        """Return a list of all hyperparameter."""
+        return []
+
+    @property
+    def theta(self):
+        """Return the (flattened, log-transformed) non-fixed hyperparameters.
+
+        Note that theta are typically the log-transformed values of the
+        kernel's hyperparameters as this representation of the search space
+        is more amenable for hyperparameter search, as hyperparameters like
+        length-scales naturally live on a log-scale.
+
+        Returns:
+            theta : array, shape (n_dims,)
+                The non-fixed, log-transformed hyperparameters of the kernel
+
+        """
+        return np.empty((0,))
+
+    @theta.setter
+    def theta(self, theta):
+        """Set the (flattened, log-transformed) non-fixed hyperparameters.
+
+        Parameters:
+            theta : array, shape (n_dims,)
+                The non-fixed, log-transformed hyperparameters of the kernel
+
+        """
+
+    @property
+    def bounds(self):
+        """Return the log-transformed bounds on the theta.
+
+        Returns:
+            bounds : array, shape (n_dims, 2)
+                The log-transformed bounds on the kernel's hyperparameters
+                theta
+
+        """
+        return np.empty((0, 2))
+
+    def is_stationary(self):
+        """Whether this kernel is stationary."""
+        return False

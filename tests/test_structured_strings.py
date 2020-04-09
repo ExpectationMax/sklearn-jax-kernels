@@ -4,7 +4,11 @@ from sklearn_jax_kernels.structured.string_utils import (
     AsciiBytesTransformer, CompressAlphabetTransformer, NGramTransformer)
 from sklearn_jax_kernels import RBF
 from sklearn_jax_kernels.structured.strings import (
-    DistanceSpectrumKernel, DistanceFromEndSpectrumKernel, SpectrumKernel)
+    DistanceSpectrumKernel,
+    DistanceFromEndSpectrumKernel,
+    RevComplementSpectrumKernel,
+    SpectrumKernel
+)
 
 
 class TestUtils:
@@ -88,5 +92,17 @@ class TestKernels:
         K_gt = np.array([
              [3., 3.],
              [3., 3.]
+        ])
+        assert np.allclose(K, K_gt)
+
+    def test_rev_comp_spectrum_kernel(self):
+        mapping = np.array([1, 0, 3, 2], np.uint8)
+        strings = np.array([[0, 1, 2, 3], [2, 3, 0, 1]], np.uint8)
+        kernel = RevComplementSpectrumKernel(2, mapping)
+        K = kernel(strings)
+        print(K)
+        K_gt = np.array([
+             [5., 5.],
+             [5., 5.]
         ])
         assert np.allclose(K, K_gt)
