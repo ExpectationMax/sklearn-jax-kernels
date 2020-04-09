@@ -4,7 +4,7 @@ from sklearn_jax_kernels.structured.string_utils import (
     AsciiBytesTransformer, CompressAlphabetTransformer, NGramTransformer)
 from sklearn_jax_kernels import RBF
 from sklearn_jax_kernels.structured.strings import (
-    DistanceSpectrumKernel, SpectrumKernel)
+    DistanceSpectrumKernel, DistanceFromEndSpectrumKernel, SpectrumKernel)
 
 
 class TestUtils:
@@ -76,5 +76,17 @@ class TestKernels:
         K_gt = np.array([
              [5.,        2.2130613],
              [2.2130613, 6.2130613]
+        ])
+        assert np.allclose(K, K_gt)
+
+    def test_distance_from_end_spectrum_kernel(self):
+        distance_kernel = RBF(1.0)
+        strings = ['abc', 'cba']
+        strings_transformed = AsciiBytesTransformer().transform(strings)
+        kernel = DistanceFromEndSpectrumKernel(distance_kernel, 1)
+        K = kernel(strings_transformed)
+        K_gt = np.array([
+             [3., 3.],
+             [3., 3.]
         ])
         assert np.allclose(K, K_gt)
