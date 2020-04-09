@@ -1,7 +1,7 @@
 """Test string kernels and utilities associated with them."""
 import numpy as np
 from sklearn_jax_kernels.structured.string_utils import (
-    AsciiBytesTransformer, NGramTransformer)
+    AsciiBytesTransformer, CompressAlphabetTransformer, NGramTransformer)
 from sklearn_jax_kernels import RBF
 from sklearn_jax_kernels.structured.strings import (
     DistanceSpectrumKernel, SpectrumKernel)
@@ -25,6 +25,13 @@ class TestUtils:
         transformer = NGramTransformer(3)
         transformed = transformer.transform(strings)
         assert np.all(np.ravel(ngrams) == np.ravel(transformed))
+
+    def test_compress_alphabet_transformer(self):
+        strings = np.asarray(['abc'])
+        transf = CompressAlphabetTransformer()
+        transf.fit(strings)
+        out = transf.transform(np.asarray(['cbad']))
+        assert np.all(np.array([[2, 1, 0, 3]]) == out)
 
 
 class TestKernels:

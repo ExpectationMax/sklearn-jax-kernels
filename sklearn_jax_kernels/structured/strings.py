@@ -1,6 +1,6 @@
 """Implementation of string kernels."""
 from functools import partial
-from jax import vmap
+from jax import device_put, vmap
 import jax.numpy as np
 from jax.lax import dynamic_slice_in_dim
 from jax.experimental import loops

@@ -1,4 +1,6 @@
 """Utilities for usage with strings."""
+from collections import defaultdict
+
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
 
@@ -22,6 +24,33 @@ class AsciiBytesTransformer(TransformerMixin):
 
     def inverse_transform(self, X):
         return [str(bytes(a), 'ascii', 'strict') for a in X]
+
+
+class CompressAlphabetTransformer(TransformerMixin, BaseEstimator):
+    """Determines which chars are used and maps them to values."""
+
+    def __init__(self, output_dtype=np.uint8):
+        self.output_dtype = output_dtype
+        self._unique_chars = None
+        self._mapping = None
+
+    def fit(self, X, y=None):
+        single_str = ''.join(X)
+        self._unique_chars = list(set(single_str))
+        self._unique_chars.sort()
+        n_alphabet = len(self._unique_chars)
+        self._mapping = defaultdict(
+            lambda: n_alphabet,
+            [(char, i) for i, char in enumerate(self._unique_chars)]
+        )
+        return self
+
+    def transform(self, X, y=None):
+        X_transf = [
+            [self._mapping[char] for char in x]
+            for x in X
+        ]
+        return np.asarray(X_transf, dtype=self.output_dtype)
 
 
 class NGramTransformer(TransformerMixin, BaseEstimator):
