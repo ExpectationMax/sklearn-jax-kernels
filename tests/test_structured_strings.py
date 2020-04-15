@@ -1,7 +1,9 @@
 """Test string kernels and utilities associated with them."""
 import numpy as np
 from sklearn_jax_kernels.structured.string_utils import (
-    AsciiBytesTransformer, CompressAlphabetTransformer, NGramTransformer)
+    AsciiBytesTransformer, CompressAlphabetTransformer, NGramTransformer,
+    get_translation_table
+)
 from sklearn_jax_kernels import RBF
 from sklearn_jax_kernels.structured.strings import (
     DistanceSpectrumKernel,
@@ -106,5 +108,30 @@ class TestKernels:
         K_gt = np.array([
              [5., 5.],
              [5., 5.]
+        ])
+        assert np.allclose(K, K_gt)
+
+    def test_get_translation_table(self):
+        table = get_translation_table(
+                input_symbols=['a', 'b', 'c'],
+                output_symbols=['c', 'b', 'a'],
+                mapping={'a': 0, 'b': 1, 'c': 2}
+        )
+        assert np.all(np.array([2, 1, 0]) == table)
+
+    def test_rev_comp_spectrum_kernel_string(self):
+        strings = ['ATGCCG', 'CGGCAT']
+        transformer = CompressAlphabetTransformer()
+        strings_transf = transformer.fit_transform(strings)
+        table = get_translation_table(
+            ['A', 'T', 'G', 'C'],
+            ['T', 'A', 'C', 'G'],
+            transformer._mapping
+        )
+        kernel = RevComplementSpectrumKernel(2, table)
+        K = kernel(strings_transf)
+        K_gt = np.array([
+             [8., 8.],
+             [8., 8.]
         ])
         assert np.allclose(K, K_gt)

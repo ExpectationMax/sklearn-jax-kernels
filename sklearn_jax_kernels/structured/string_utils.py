@@ -53,6 +53,30 @@ class CompressAlphabetTransformer(TransformerMixin, BaseEstimator):
         return np.asarray(X_transf, dtype=self.output_dtype)
 
 
+def get_translation_table(input_symbols, output_symbols, mapping,
+                          dtype=np.uint8):
+    """Build a translation table for characters using mapping.
+
+    Returns a array, where index i corresponding to input_symbol contains the
+    matching value from output_symbols.
+
+    Example:
+        >>> get_translation_table(
+                input_symbols=['a', 'b', 'c'],
+                output_symbols=['c', 'b', 'a'],
+                mapping = {'a': 0, 'b': 1, 'c': 2}
+            )
+        array([2, 1, 0])
+
+    """
+    input_transf = np.array([mapping[symb] for symb in input_symbols], dtype=dtype)
+    assert len(np.unique(input_transf)) == len(input_symbols)
+    output_transf = np.array([mapping[symb] for symb in output_symbols], dtype=dtype)
+    input_order = np.argsort(input_transf)
+    return output_transf[input_order]
+
+
+
 class NGramTransformer(TransformerMixin, BaseEstimator):
     def __init__(self, ngram_length):
         self.ngram_length = ngram_length
