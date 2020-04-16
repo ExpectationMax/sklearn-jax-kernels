@@ -625,7 +625,8 @@ class DistanceRevComplementSpectrumKernel(Kernel):
         """
         params = dict(
             distance_kernel=self.distance_kernel,
-            n_gram_length=self.n_gram_length
+            n_gram_length=self.n_gram_length,
+            mapping=self.mapping
         )
         if deep:
             deep_items = self.distance_kernel.get_params().items()
