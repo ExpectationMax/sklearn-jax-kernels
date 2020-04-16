@@ -144,7 +144,6 @@ class DistanceSpectrumKernel(Kernel):
             offsets2 = np.arange(kmers2.shape[0])
             distance_weight = vmap(
                 lambda i: vmap(lambda j: pos_kernel(i, j))(offsets2))(offsets1)
-            print(distance_weight.dtype)
             return np.sum(same_kmer * distance_weight)
 
         if n_gram_length is None:
