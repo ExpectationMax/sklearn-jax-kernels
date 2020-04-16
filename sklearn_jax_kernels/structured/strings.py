@@ -129,7 +129,7 @@ class DistanceSpectrumKernel(Kernel):
 
     @property
     def pure_kernel_fn(self):
-        """Return the pure fuction for computing the kernel."""
+        """Return the pure function for computing the kernel."""
         n_gram_length = self.n_gram_length
 
         distance_kernel = self.distance_kernel.pure_kernel_fn

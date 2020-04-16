@@ -5,7 +5,7 @@ MEMORY_SAVING_CONFIGS = [
     'NORMALIZED_KERNEL_PUSH_DOWN'
 ]
 
-SAVE_MEMORY = True
+SAVE_MEMORY = False
 """bool: Apply multiple tricks to reduce memory overhead.
 
 This could slow down computation significantly but may allow the direct
@@ -14,7 +14,7 @@ application to larger problems when running into GPU memory issues.
 This variable activates all configs in `MEMORY_SAVING_CONFIGS`.
 """
 
-KERNEL_MATRIX_USE_LOOP = False
+KERNEL_MATRIX_USE_LOOP = True
 """bool: Use loop when constructing kernel matrix
 
 Compute kernel matrix using a dynamically unrolled loop instead of
