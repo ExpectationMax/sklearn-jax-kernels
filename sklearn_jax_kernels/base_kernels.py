@@ -90,7 +90,7 @@ class Kernel(sklearn_kernel, metaclass=abc.ABCMeta):
     def _kernel_matrix_with_gradients(kernel_fn, theta, X, Y):
         kernel_fn = value_and_grad(kernel_fn)
         kernel_fn = partial(kernel_fn, theta)
-        if Y is None:
+        if Y is None or (Y is X):
             if config_value('KERNEL_MATRIX_USE_LOOP'):
                 n = len(X)
                 with loops.Scope() as s:
