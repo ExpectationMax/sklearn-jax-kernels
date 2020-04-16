@@ -8,6 +8,7 @@ from sklearn_jax_kernels import RBF
 from sklearn_jax_kernels.structured.strings import (
     DistanceSpectrumKernel,
     DistanceFromEndSpectrumKernel,
+    DistanceRevComplementSpectrumKernel,
     RevComplementSpectrumKernel,
     SpectrumKernel
 )
@@ -133,5 +134,41 @@ class TestKernels:
         K_gt = np.array([
              [8., 8.],
              [8., 8.]
+        ])
+        assert np.allclose(K, K_gt)
+
+    def test_rev_comp_distance_spectrum_kernel_string(self):
+        distance_kernel = RBF(1.)
+        strings = ['ATGC', 'GCAT']
+        transformer = CompressAlphabetTransformer()
+        strings_transf = transformer.fit_transform(strings)
+        table = get_translation_table(
+            ['A', 'T', 'G', 'C'],
+            ['T', 'A', 'C', 'G'],
+            transformer._mapping
+        )
+        kernel = DistanceRevComplementSpectrumKernel(distance_kernel, 2, table)
+        K = kernel(strings_transf)
+        K_gt = np.array([
+             [3.2706707, 3.2706707],
+             [3.2706707, 3.2706707]
+        ])
+        assert np.allclose(K, K_gt)
+
+    def test_rev_comp_distance_spectrum_kernel_string_mismatch(self):
+        distance_kernel = RBF(1.)
+        strings = ['ATGC', 'CGAT']
+        transformer = CompressAlphabetTransformer()
+        strings_transf = transformer.fit_transform(strings)
+        table = get_translation_table(
+            ['A', 'T', 'G', 'C'],
+            ['T', 'A', 'C', 'G'],
+            transformer._mapping
+        )
+        kernel = DistanceRevComplementSpectrumKernel(distance_kernel, 2, table)
+        K = kernel(strings_transf)
+        K_gt = np.array([
+             [3.2706707, 1.1353353],
+             [1.1353353, 3.2706707]
         ])
         assert np.allclose(K, K_gt)
