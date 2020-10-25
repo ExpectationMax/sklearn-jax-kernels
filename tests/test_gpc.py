@@ -1,3 +1,6 @@
+from sklearn import datasets
+from sklearn_jax_kernels import RBF, GaussianProcessClassifier
+import jax.numpy as jnp
 import numpy as np
 
 from scipy.optimize import approx_fprime
@@ -10,7 +13,8 @@ from sklearn_jax_kernels import RBF, ConstantKernel as C
 from sklearn.utils._testing import assert_almost_equal, assert_array_equal
 
 from jax.config import config
-config.update("jax_enable_x64", True)  # Required for numerical gradients checks
+# Required for numerical gradients checks
+config.update("jax_enable_x64", True)
 
 
 def f(x):
@@ -65,7 +69,7 @@ def test_lml_precomputed(kernel):
 #     # Test that clone_kernel=False has side-effects of kernel.theta.
 #     gpc = GaussianProcessClassifier(kernel=kernel).fit(X, y)
 #     input_theta = np.ones(gpc.kernel_.theta.shape, dtype=np.float64)
-# 
+#
 #     gpc.log_marginal_likelihood(input_theta, clone_kernel=False)
 #     assert_almost_equal(gpc.kernel_.theta, input_theta, 7)
 
@@ -153,3 +157,12 @@ def test_multi_class(kernel):
 
     y_pred = gpc.predict(X2)
     assert_array_equal(np.argmax(y_prob, 1), y_pred)
+
+
+def test_iris_example():
+    iris = datasets.load_iris()
+    X = jnp.asarray(iris.data)
+    y = jnp.array(iris.target, dtype=int)
+
+    kernel = 1. + RBF(length_scale=1.0)
+    gpc = GaussianProcessClassifier(kernel=kernel).fit(X, y)
