@@ -3,7 +3,7 @@
 [![Build Status](https://travis-ci.com/ExpectationMax/sklearn-jax-kernels.svg?token=3sUUnmMzs9wxN3Qapssj&branch=master)](https://travis-ci.com/ExpectationMax/sklearn-jax-kernels)
 
 **Warning: This project is still in an early stage it could be that the API
-will change in the future, further functionality is still very limited to the
+will change in the future. Further, functionality is still quite limited to the
 use cases which defined the creation of the project (application to DNA
 sequences present in Biology).**
 
