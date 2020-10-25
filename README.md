@@ -36,10 +36,18 @@ the faster design of new kernels through Automatic Differentiation.
 The kernels in this package follow the [scikit-learn kernel
 API](https://scikit-learn.org/stable/modules/gaussian_process.html#gaussian-process-kernel-api).
 
+## Installation
+
+`sklearn-jax-kernels` can simply be installed via `pip`:
+
+```bash
+pip install sklearn-jax-kernels
+```
+
 ## Quickstart
 
 A short demonstration of how the kernels can be used, inspired by the
-[ scikit-learn
+[scikit-learn
 documentation](https://scikit-learn.org/stable/auto_examples/gaussian_process/plot_gpc_iris.html).
 
 ```python
