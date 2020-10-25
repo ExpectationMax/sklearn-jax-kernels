@@ -1,8 +1,10 @@
 [tool.poetry]
 name = "sklearn-jax-kernels"
-version = "0.1.0"
-description = ""
+version = "0.0.2"
+description = "Composable kernels for scikit-learn implemented in JAX."
 authors = ["Max Horn <max.horn@bsse.ethz.ch>"]
+readme = "README.md"
+repository = "https://github.com/ExpectationMax/sklearn-jax-kernels"
 
 [tool.poetry.dependencies]
 python = "^3.6"
